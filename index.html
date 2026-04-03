@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Almas en Órbita - Nuestro Universo</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0510; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 20px; left: 20px; color: #ffd700;
+            pointer-events: none; text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+        #mensaje {
+            position: absolute; bottom: 30px; width: 100%; text-align: center;
+            color: #ff99cc; font-style: italic; font-size: 1.2em; opacity: 0;
+            transition: opacity 1s; text-shadow: 0 0 8px rgba(255, 153, 204, 0.8);
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <h2 id="titulo">Almas en Órbita</h2>
+    <p>Memorias recolectadas: <span id="puntos">0</span></p>
+</div>
+<div id="mensaje">"Cada destello es un susurro de mi alma..."</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const msgElement = document.getElementById('mensaje');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// --- CONFIGURACIÓN Y ESTADO ---
+let score = 0;
+const keys = {};
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+// El "Alma" (Jugador)
+const player = {
+    x: canvas.width / 2,
+    y: canvas.height / 2,
+    vx: 0,
+    vy: 0,
+    angle: 0,
+    accel: 0.15,
+    friction: 0.98,
+    radius: 12
+};
+
+// El "Alma Gemela" (IA/Seguidor suave)
+const soulmate = {
+    x: canvas.width / 2 - 40,
+    y: canvas.height / 2,
+    radius: 8
+};
+
+let particles = [];
+let memories = [];
+
+// --- CLASES ---
+class Memory {
+    constructor() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.text = "Recuerdo: Nuestro primer mensaje ✨"; // Aquí irán tus frases
+        this.radius = 15;
+        this.pulse = 0;
+    }
+    draw() {
+        this.pulse += 0.05;
+        let size = this.radius + Math.sin(this.pulse) * 3;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+        ctx.fill();
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = "gold";
+        ctx.fillStyle = "white";
+        ctx.fillText("✨", this.x - 5, this.y + 5);
+        ctx.shadowBlur = 0;
+    }
+}
+
+class Particle {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.life = 1.0;
+        this.size = Math.random() * 3 + 1;
+        this.color = `rgba(255, ${Math.random() * 100 + 150}, 255, `;
+    }
+    update() {
+        this.life -= 0.02;
+    }
+    draw() {
+        ctx.fillStyle = this.color + this.life + ")";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+// Inicializar algunos recuerdos
+for(let i=0; i<5; i++) memories.push(new Memory());
+
+// --- BUCLE PRINCIPAL ---
+function update() {
+    // 1. Física de Movimiento (Inercia)
+    if (keys['ArrowUp'] || keys['KeyW']) {
+        player.vx += Math.cos(player.angle) * player.accel;
+        player.vy += Math.sin(player.angle) * player.accel;
+        // Crear estela
+        particles.push(new Particle(player.x, player.y));
+    }
+    if (keys['ArrowLeft'] || keys['KeyA']) player.angle -= 0.05;
+    if (keys['ArrowRight'] || keys['KeyD']) player.angle += 0.05;
+
+    player.vx *= player.friction;
+    player.vy *= player.friction;
+    player.x += player.vx;
+    player.y += player.vy;
+
+    // 2. Comportamiento del Alma Gemela (Seguimiento elástico)
+    let dx = player.x - soulmate.x;
+    let dy = player.y - soulmate.y;
+    let distance = Math.sqrt(dx*dx + dy*dy);
+    
+    // Si se alejan, el hilo las une
+    if (distance > 80) {
+        soulmate.x += dx * 0.05;
+        soulmate.y += dy * 0.05;
+    }
+
+    // 3. Colisiones con Recuerdos
+    memories.forEach((m, index) => {
+        let d = Math.sqrt((player.x - m.x)**2 + (player.y - m.y)**2);
+        if (d < 30) {
+            score++;
+            document.getElementById('puntos').innerText = score;
+            showMemoryText(m.text);
+            memories.splice(index, 1);
+            memories.push(new Memory()); // Generar otro
+        }
+    });
+
+    // Límites de pantalla (efecto infinito suave)
+    if (player.x > canvas.width) player.x = 0;
+    if (player.x < 0) player.x = canvas.width;
+    if (player.y > canvas.height) player.y = 0;
+    if (player.y < 0) player.y = canvas.height;
+
+    particles.forEach((p, i) => {
+        p.update();
+        if (p.life <= 0) particles.splice(i, 1);
+    });
+}
+
+function draw() {
+    // Fondo espacial
+    let grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, canvas.width);
+    grad.addColorStop(0, "#1a0b2e");
+    grad.addColorStop(1, "#0a0510");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Dibujar Estelas
+    particles.forEach(p => p.draw());
+
+    // Dibujar Recuerdos
+    memories.forEach(m => m.draw());
+
+    // Dibujar Hilo Invisible (Vínculo)
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y);
+    ctx.lineTo(soulmate.x, soulmate.y);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Dibujar Almas (Estrellas)
+    drawStar(player.x, player.y, player.angle, "#ff99cc", 15);
+    drawStar(soulmate.x, soulmate.y, 0, "#ffd700", 10);
+}
+
+function drawStar(x, y, angle, color, size) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = color;
+    ctx.fillStyle = color;
+    // Forma simple de "nave/estrella"
+    ctx.beginPath();
+    ctx.moveTo(size, 0);
+    ctx.lineTo(-size, -size/2);
+    ctx.lineTo(-size, size/2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
+function showMemoryText(txt) {
+    msgElement.innerText = txt;
+    msgElement.style.opacity = 1;
+    setTimeout(() => { msgElement.style.opacity = 0; }, 3000);
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
