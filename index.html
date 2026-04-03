@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Almas en Órbita</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0a0510; font-family: sans-serif; cursor: crosshair; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 20px; left: 20px; color: #ffd700;
+            pointer-events: none; z-index: 10;
+        }
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; color: white; z-index: 20;
+            text-align: center; cursor: pointer;
+        }
+        #mensaje {
+            position: absolute; bottom: 50px; width: 100%; text-align: center;
+            color: #ff99cc; font-size: 1.5em; opacity: 0; transition: opacity 0.5s;
+            text-shadow: 0 0 10px rgba(255,153,204,0.8); pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="overlay">
+    <h1>ALMAS EN ÓRBITA</h1>
+    <p>Usa las Flechas o WASD para volar<br>Haz clic para comenzar nuestro viaje</p>
+</div>
+
+<div id="ui">
+    <p>Memorias: <span id="puntos">0</span></p>
+</div>
+
+<div id="mensaje"></div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const msgElement = document.getElementById('mensaje');
+
+let gameRunning = false;
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// --- CONTROLES ---
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.code] = true; });
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+overlay.addEventListener('click', () => {
+    overlay.style.display = 'none';
+    gameRunning = true;
+});
+
+// --- ESTADO DEL JUEGO ---
+const player = {
+    x: canvas.width / 2,
+    y: canvas.height / 2,
+    vx: 0,
+    vy: 0,
+    angle: -Math.PI / 2,
+    accel: 0.2, // Aumentado para que se note más
+    friction: 0.97,
+    radius: 15
+};
+
+const soulmate = { x: canvas.width / 2, y: canvas.height / 2 };
+let memories = [];
+let particles = [];
+let score = 0;
+
+const frases = [
+    "Nuestro primer 'hola' ✨",
+    "Esa risa que me cambió la vida ❤️",
+    "Tu mano junto a la mía...",
+    "El universo es pequeño a tu lado",
+    "Siempre elegiré orbitar cerca de ti"
+];
+
+class Memory {
+    constructor() {
+        this.x = Math.random() * (canvas.width - 100) + 50;
+        this.y = Math.random() * (canvas.height - 100) + 50;
+        this.text = frases[Math.floor(Math.random() * frases.length)];
+    }
+    draw() {
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = "gold";
+        ctx.fillStyle = "white";
+        ctx.font = "20px Arial";
+        ctx.fillText("✨", this.x, this.y);
+        ctx.shadowBlur = 0;
+    }
+}
+
+for(let i=0; i<3; i++) memories.push(new Memory());
+
+function update() {
+    if (!gameRunning) return;
+
+    // Rotación
+    if (keys['ArrowLeft'] || keys['KeyA']) player.angle -= 0.08;
+    if (keys['ArrowRight'] || keys['KeyD']) player.angle += 0.08;
+
+    // Impulso
+    if (keys['ArrowUp'] || keys['KeyW']) {
+        player.vx += Math.cos(player.angle) * player.accel;
+        player.vy += Math.sin(player.angle) * player.accel;
+        // Partículas
+        particles.push({x: player.x, y: player.y, life: 1, size: Math.random()*4});
+    }
+
+    // Aplicar física
+    player.vx *= player.friction;
+    player.vy *= player.friction;
+    player.x += player.vx;
+    player.y += player.vy;
+
+    // Seguimiento del alma gemela
+    let dx = player.x - soulmate.x;
+    let dy = player.y - soulmate.y;
+    soulmate.x += dx * 0.08;
+    soulmate.y += dy * 0.08;
+
+    // Límites de pantalla
+    if (player.x > canvas.width) player.x = 0;
+    if (player.x < 0) player.x = canvas.width;
+    if (player.y > canvas.height) player.y = 0;
+    if (player.y < 0) player.y = canvas.height;
+
+    // Colisiones
+    memories.forEach((m, i) => {
+        let dist = Math.hypot(player.x - m.x, player.y - m.y);
+        if (dist < 30) {
+            score++;
+            document.getElementById('puntos').innerText = score;
+            showMsg(m.text);
+            memories.splice(i, 1);
+            memories.push(new Memory());
+        }
+    });
+
+    particles.forEach((p, i) => {
+        p.life -= 0.02;
+        if (p.life <= 0) particles.splice(i, 1);
+    });
+}
+
+function draw() {
+    ctx.fillStyle = "#0a0510";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Dibujar vínculo
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y);
+    ctx.lineTo(soulmate.x, soulmate.y);
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.stroke();
+
+    particles.forEach(p => {
+        ctx.fillStyle = `rgba(255, 150, 200, ${p.life})`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+    });
+
+    memories.forEach(m => m.draw());
+
+    // Dibujar Jugador
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.rotate(player.angle);
+    ctx.fillStyle = "#ff99cc";
+    ctx.beginPath();
+    ctx.moveTo(15, 0); ctx.lineTo(-10, -10); ctx.lineTo(-10, 10);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // Dibujar Alma Gemela
+    ctx.fillStyle = "#ffd700";
+    ctx.beginPath();
+    ctx.arc(soulmate.x, soulmate.y, 8, 0, Math.PI*2);
+    ctx.fill();
+}
+
+function showMsg(t) {
+    msgElement.innerText = t;
+    msgElement.style.opacity = 1;
+    setTimeout(() => msgElement.style.opacity = 0, 2000);
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
